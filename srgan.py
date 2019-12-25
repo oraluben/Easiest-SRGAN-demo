@@ -49,7 +49,7 @@ class SRGAN():
                          metrics=['accuracy'])
 
         # Configure data loader
-        self.dataset_name = 'D:/github_repos/Keras-GAN-master/datasets/img_align_celeba'
+        self.dataset_name = './model/img_align_celeba'
         self.data_loader = DataLoader(dataset_name=self.dataset_name,
                                       img_res=(self.hr_height, self.hr_width))
 
@@ -235,13 +235,12 @@ class SRGAN():
             # If at save interval => save generated image samples
             if epoch % sample_interval == 0:
                 self.sample_images_new(epoch)
-            if epoch % 500 == 0 and epoch > 1:
-                self.generator.save_weights('./saved_model/' + str(epoch) + '.h5')
+            if (epoch + 1) % 500 == 0 and epoch > 1:
+                self.generator.save_weights('./saved_model/{}.h5'.format(epoch + 1))
 
-    def test_images(self, batch_size=1):
+    def test_images(self, weight='./saved_model/3000.h5', batch_size=1):
         imgs_hr, imgs_lr = self.data_loader.load_data(batch_size, is_pred=True)
-        os.makedirs('saved_model/', exist_ok=True)
-        self.generator.load_weights('./saved_model/' + str(2000) + '.h5')
+        self.generator.load_weights(weight)
         fake_hr = self.generator.predict(imgs_lr)
         r, c = imgs_hr.shape[0], 2
         imgs_lr = 0.5 * imgs_lr + 0.5
@@ -283,5 +282,8 @@ class SRGAN():
 
 if __name__ == '__main__':
     gan = SRGAN()
-    # gan.train(epochs=3000, batch_size=10, sample_interval=2)
-    gan.test_images()
+
+    target_epochs = 3000
+
+    gan.train(epochs=target_epochs, batch_size=10, sample_interval=2)
+    gan.test_images('./saved_model/{}.h5'.format(target_epochs))
