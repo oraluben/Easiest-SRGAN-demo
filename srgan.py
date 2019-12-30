@@ -19,7 +19,9 @@ from keras.optimizers import Adam
 import datetime
 import matplotlib.pyplot as plt
 from data_loader import DataLoader
+from visualdl import LogWriter
 import numpy as np
+import cv2
 import os
 
 
@@ -49,9 +51,21 @@ class SRGAN():
                          metrics=['accuracy'])
 
         # Configure data loader
-        self.dataset_name = './model/img_align_celeba'
+        self.dataset_name = 'D:/CelebA/img_align_celeba'
         self.data_loader = DataLoader(dataset_name=self.dataset_name,
                                       img_res=(self.hr_height, self.hr_width))
+
+        self.logger = LogWriter("./logsrgan", sync_cycle=100)
+        with self.logger.mode("train"):
+            # create a scalar component called 'scalars/'
+            self.train_d_loss = self.logger.scalar(
+                "scalars/train_d_loss")
+            self.train_g_loss = self.logger.scalar(
+                "scalars/train_g_loss")
+            self.image_high_input = self.logger.image("images/high_input", 1)
+            self.image_low_input = self.logger.image("images/low_input", 1)
+            self.histogram0 = self.logger.histogram("histogram/histogram0", num_buckets=50)
+            self.histogram1 = self.logger.histogram("histogram/histogram1", num_buckets=50)
 
         # Calculate output shape of D (PatchGAN)
         patch = int(self.hr_height / 2 ** 4)
@@ -211,13 +225,27 @@ class SRGAN():
             d_loss_real = self.discriminator.train_on_batch(imgs_hr, valid)
             d_loss_fake = self.discriminator.train_on_batch(fake_hr, fake)
             d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
+            max, min = d_loss
+            self.train_d_loss.add_record(epoch, (max + min) / 2)
             # ------------------
             #  Train Generator
             # ------------------
 
             # Sample images and their conditioning counterparts
             imgs_hr, imgs_lr = self.data_loader.load_data(batch_size)
+
+            tem_img = imgs_hr[0, :, :, 0]
+            tem_img = cv2.resize(tem_img, (64, 64))
+            tem_img = tem_img.flatten()
+            self.image_high_input.start_sampling()
+            self.image_high_input.add_sample([64, 64], tem_img)
+            self.image_high_input.finish_sampling()
+            tem_img = imgs_lr[0, :, :, 0]
+            tem_img = cv2.resize(tem_img, (28, 28))
+            tem_img = tem_img.flatten()
+            self.image_low_input.start_sampling()
+            self.image_low_input.add_sample([28, 28], tem_img)
+            self.image_low_input.finish_sampling()
 
             # The generators want the discriminators to label the generated images as real
             valid = np.ones((batch_size,) + self.disc_patch)
@@ -227,6 +255,8 @@ class SRGAN():
 
             # Train the generators
             g_loss = self.combined.train_on_batch([imgs_lr, imgs_hr], [valid, image_features])
+            one, two, three = g_loss
+            self.train_g_loss.add_record(epoch, (one + two + three) / 3)
 
             elapsed_time = datetime.datetime.now() - start_time
             # Plot the progress
@@ -253,7 +283,8 @@ class SRGAN():
         for row in range(r):
             for col, image in enumerate([imgs_lr, fake_hr]):
                 axs[row, col].imshow(image[row])
-                axs[row, col].set_title(titles[col])
+                if col == 0:
+                    axs[row, col].set_title(titles[col])
                 axs[row, col].axis('off')
         fig.savefig("./result.png")
         plt.close()
@@ -273,7 +304,8 @@ class SRGAN():
         for row in range(r):
             for col, image in enumerate([fake_hr, imgs_hr, imgs_lr]):
                 axs[row, col].imshow(image[row])
-                axs[row, col].set_title(titles[col])
+                if row == 0:
+                    axs[row, col].set_title(titles[col])
                 axs[row, col].axis('off')
 
         fig.savefig("images/%d.png" % (epoch))
